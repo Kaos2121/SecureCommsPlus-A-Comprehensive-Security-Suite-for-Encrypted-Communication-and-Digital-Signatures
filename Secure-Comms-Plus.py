@@ -3,7 +3,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import ECDH
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives.hashes import SHA256, SHA512, SHA1
+from cryptography.hazmat.primitives.hashes import SHA256, SHA512
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
@@ -16,7 +16,6 @@ from hmac import compare_digest
 from getpass import getpass
 import time
 import secrets
-import hmac
 import hashlib
 
 backend = default_backend()
@@ -110,8 +109,7 @@ def encrypt_data(key, plaintext):
         backend=backend
     ).encryptor()
 
-    padded_data = pad_data(plaintext)
-    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
 
     return b64encode(iv + encryptor.tag + ciphertext).decode()
 
@@ -125,8 +123,7 @@ def decrypt_data(key, encrypted_data):
         backend=backend
     ).decryptor()
 
-    padded_data = decryptor.update(ciphertext) + decryptor.finalize()
-    return unpad_data(padded_data)
+    return decryptor.update(ciphertext) + decryptor.finalize()
 
 def hash_data(data):
     digest = hashes.Hash(hashes.SHA512(), backend=backend)
@@ -181,7 +178,7 @@ def secure_message_reception(receiver_private_key, sender_public_key, encrypted_
         logger.error("Message integrity compromised.")
         raise ValueError("Message integrity compromised.")
 
-    return decrypt_data(derived_key, encrypted_message)
+    return decrypt_data(derived_key, encrypted_message.encode())
 
 def sign_data(private_key, data):
     return private_key.sign(
@@ -207,7 +204,7 @@ def multi_factor_authentication(secret):
 
 def time_based_one_time_password(secret, interval=30):
     counter = int(time.time() / interval)
-    hmac_result = hmac.new(secret.encode(), counter.to_bytes(8, 'big'), hashlib.sha1).digest()
+    hmac_result = hmac.new(secret.encode(), counter.to_bytes(8, 'big'), hashlib.sha256).digest()
     otp = int.from_bytes(hmac_result[:4], 'big') & 0x7FFFFFFF
     return otp % 1000000
 
@@ -236,14 +233,21 @@ def store_keys(private_key, public_key, filename, passphrase):
 @rate_limit
 def load_keys(filename, passphrase):
     with open(filename, 'rb') as f:
-        private_key = deserialize_private_key(f.read(), passphrase)
-        public_key = deserialize_public_key(f.read())
+        private_key_pem = f.read()
+        private_key = deserialize_private_key(private_key_pem, passphrase)
+        public_key_pem = private_key_pem[len(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.BestAvailableEncryption(passphrase.encode())
+        )):]
+        public_key = deserialize_public_key(public_key_pem)
     return private_key, public_key
 
 def generate_key_file(filename, passphrase):
     private_key, public_key = generate_ecc_keys()
     store_keys(private_key, public_key, filename, passphrase)
     logger.info(f"Keys generated and stored in {filename}")
+    return private_key, public_key
 
 def load_or_generate_keys(filename, passphrase):
     if path.exists(filename):
@@ -285,7 +289,7 @@ def hybrid_encryption(receiver_public_key, plaintext):
 def hybrid_decryption(receiver_private_key, encrypted_data):
     logger.info("Performing hybrid decryption...")
     encrypted_data = b64decode(encrypted_data)
-    encrypted_aes_key, encrypted_message = encrypted_data.split(b'::')
+    encrypted_aes_key, encrypted_message = encrypted_data.split(b'::', 1)
     aes_key = rsa_decrypt(receiver_private_key, encrypted_aes_key)
     return decrypt_data(aes_key, encrypted_message.decode())
 
@@ -326,7 +330,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
 # Made by Matt Lett, (github.com/Kaos2121)
