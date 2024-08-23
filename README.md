@@ -1,0 +1,2 @@
+# SecureCommsPlus-A-Comprehensive-Security-Suite-for-Encrypted-Communication-and-Digital-Signatures
+SecureCommsPlus is an advanced cryptographic framework designed for secure communication using ECC, AES-GCM, HMAC verification, and multi-factor authentication. It supports key storage, digital signatures, and integrity checks to protect against tampering and unauthorized access, ensuring secure data exchange.      You said:
